@@ -1,0 +1,96 @@
+pipeline {
+    agent any
+
+    environment {
+        SONARQUBE_SERVER = 'sonarqube'  // SonarQube server name in Jenkins configuration
+        SONARQUBE_TOKEN = credentials('sonar-token')  // SonarQube authentication token stored in Jenkins credentials
+        NEXUS_URL = 'http://nexus.example.com/repository/maven-releases/'  // Nexus repository URL
+        NEXUS_CREDENTIALS_ID = 'nexus-credentials'  // Nexus credentials stored in Jenkins
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                // Checkout source code from Git repository
+                git branch: 'main', url: 'https://github.com/your-repo/project.git'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                // Run SonarQube analysis
+                withSonarQubeEnv('sonarqube') {
+                    sh """
+                    sonar-scanner \
+                        -Dsonar.projectKey=your_project_key \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=${SONARQUBE_SERVER} \
+                        -Dsonar.login=${SONARQUBE_TOKEN}
+                    """
+                }
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                dir('terraform') {
+                    // Initialize Terraform
+                    sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                dir('terraform') {
+                    // Apply Terraform configuration
+                    sh 'terraform apply -auto-approve'
+                }
+            }
+        }
+
+        stage('Ansible Playbook Execution') {
+            steps {
+                dir('ansible') {
+                    // Run Ansible playbook to configure infrastructure
+                    sh 'ansible-playbook -i inventory playbook.yml'
+                }
+            }
+        }
+
+        stage('Publish Artifact to Nexus') {
+            steps {
+                script {
+                    def artifactId = 'your-artifact'
+                    def version = '1.0.0'
+                    def repository = 'maven-releases'
+                    
+                    // Nexus deployment script
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: NEXUS_URL,
+                        groupId: 'com.yourcompany',
+                        version: version,
+                        repository: repository,
+                        credentialsId: NEXUS_CREDENTIALS_ID,
+                        artifacts: [
+                            [
+                                artifactId: artifactId,
+                                file: 'target/your-artifact.jar',
+                                type: 'jar'
+                            ]
+                        ]
+                    )
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up workspace after build
+            cleanWs()
+        }
+    }
+}
